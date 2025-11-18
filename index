@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard de Aportaciones</title>
+  <!-- Dependencias CDN -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    :root{
+      --acqua: #00bcd4; /* color principal */
+      --acqua-dark: #0097a7;
+      --bg: #ffffff;
+      --muted: #6b7280;
+      --card-shadow: 0 6px 18px rgba(3, 60, 77, 0.08);
+      --radius: 12px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#f7fcfd 0%, #ffffff 100%);color:#0f172a}
+    .app{
+      display:grid;
+      grid-template-columns: 320px 1fr;
+      gap:20px;
+      padding:24px;
+      align-items:start;
+      height:100vh;
+      box-sizing:border-box;
+    }
+
+    /* SIDEBAR */
+    .sidebar{
+      background:var(--bg);
+      border-radius:var(--radius);
+      padding:18px;
+      box-shadow:var(--card-shadow);
+      height:calc(100vh - 48px);
+      overflow:auto;
+    }
+    .brand{display:flex;gap:12px;align-items:center;margin-bottom:14px}
+    .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--acqua),var(--acqua-dark));display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+    h3{margin:0}
+    .muted{color:var(--muted);font-size:13px}
+
+    .control{margin-top:12px}
+    label{font-weight:600;font-size:13px}
+    select,input[type="date"],input[type="text"]{
+      width:100%;padding:8px 10px;border-radius:8px;border:1px solid #e6eef0;margin-top:6px;background:#fbfeff
+    }
+    .small{font-size:12px;color:var(--muted);margin-top:6px}
+    .btn{display:inline-block;padding:10px 14px;border-radius:10px;background:var(--acqua);color:white;border:none;cursor:pointer;font-weight:700}
+    .btn.secondary{background:#eef9fa;color:var(--acqua)}
+
+    /* MAIN */
+    .main{
+      display:flex;flex-direction:column;gap:18px;
+    }
+    .card{background:var(--bg);padding:16px;border-radius:12px;box-shadow:var(--card-shadow)}
+
+    .kpi-row{display:flex;gap:12px}
+    .kpi{flex:1;padding:14px;border-radius:10px;background:linear-gradient(180deg,#ffffff, #fbffff);display:flex;flex-direction:column}
+    .kpi .value{font-size:20px;font-weight:800;color:var(--acqua)}
+    .kpi .label{color:var(--muted);font-size:13px;margin-top:6px}
+
+    .charts{display:grid;grid-template-columns:1fr 420px;gap:12px}
+    .chart-card{padding:12px}
+
+    /* table */
+    .table-wrap{overflow:auto}
+
+    footer{font-size:12px;color:var(--muted);margin-top:8px}
+
+    @media (max-width:980px){
+      .app{grid-template-columns:1fr; padding:12px}
+      .sidebar{height:auto}
+      .charts{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">DA</div>
+        <div>
+          <h3>Dashboard Aportaciones</h3>
+          <div class="muted">Carga tu archivo .xls o .xlsx y filtra la información</div>
+        </div>
+      </div>
+
+      <div class="control">
+        <label>Subir archivo Excel</label>
+        <input id="file" type="file" accept=".xls,.xlsx" />
+        <div class="small">Se leerá la primera hoja del libro. Columnas esperadas incluidas en tu archivo.</div>
+      </div>
+
+      <hr style="margin:14px 0;border:none;border-top:1px solid #eef6f7">
+
+      <div class="control">
+        <label>Buscar por cliente</label>
+        <input id="searchClient" type="text" placeholder="Nombre o Número de Cliente" />
+      </div>
+
+      <div class="control">
+        <label>Sucursal</label>
+        <select id="filterSucursal"><option value="">-- Todas --</option></select>
+      </div>
+
+      <div class="control">
+        <label>Promotor</label>
+        <select id="filterPromotor"><option value="">-- Todos --</option></select>
+      </div>
+
+      <div class="control">
+        <label>Estatus</label>
+        <select id="filterEstatus"><option value="">-- Todos --</option></select>
+      </div>
+
+      <div class="control">
+        <label>Tipo de Aportación</label>
+        <select id="filterTipo"><option value="">-- Todos --</option></select>
+      </div>
+
+      <div class="control">
+        <label>Rango Fecha Apertura</label>
+        <input id="dateFrom" type="date" />
+        <input id="dateTo" type="date" style="margin-top:8px" />
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button id="applyFilters" class="btn">Aplicar filtros</button>
+        <button id="resetFilters" class="btn secondary">Reset</button>
+      </div>
+
+      <footer>Consejo: Ordena por columnas en la tabla para encontrar rápidamente registros.</footer>
+    </aside>
+
+    <main class="main">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h2 style="margin:0">Resumen</h2>
+            <div class="muted">KPIs y visualizaciones rápidas</div>
+          </div>
+          <div>
+            <button id="downloadCsv" class="btn">Exportar CSV</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px" class="kpi-row">
+          <div class="kpi">
+            <div class="value" id="kpiTotal">$0</div>
+            <div class="label">Monto Total</div>
+          </div>
+          <div class="kpi">
+            <div class="value" id="kpiCount">0</div>
+            <div class="label">Número de Aportaciones</div>
+          </div>
+          <div class="kpi">
+            <div class="value" id="kpiPromedio">$0</div>
+            <div class="label">Monto Promedio</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card charts">
+        <div class="chart-card card">
+          <canvas id="chartPrincipal" height="220"></canvas>
+        </div>
+
+        <div class="card">
+          <h4 style="margin-top:6px">Distribución por Estatus</h4>
+          <canvas id="chartEstatus" height="240"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">Tabla de Aportaciones</h3>
+        <div class="table-wrap">
+          <table id="dataTable" class="display" style="width:100%">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    // Utilidades
+    const expectedColumns = [
+      'Sucursal','Promotor','Fecha Creación Cte.','Número de Cliente','Nombre de Cliente','Tipo Aportación','No. Aportación','Fecha Apertura','Fecha Vencimiento','Fecha Prevencimiento','Estatus','Plazo (Días)','Plazo Real (Días)','Monto','Monto Liquidación Aportación Anterior','Intereses provenientes de Increm de Renov','Dinero Nuevo','Formula Interés','Tasa Fija','Tasa Base','Sobre Tasa','Piso','Techo','Intereses Totales','ISR Total','Total a Recibir','Intereses pagados en el perido','Intereses devengados no pagados en el periodo','Intereses por denvengar en el periodo','Interés Devengado en el mes','Tipo de Interés','Tasa Sugerida','Diferencia de Tasa','Tipo Documento','Cantidad','Monto renovado','Monto Global','Saldo Capital','Día de Pago','Reinversión Aut','Institución 1','Cta. Dispersar 1','Institución 2','Cta. Dispersar 2','Institución 3','Cta. Dispersar 3','Notas']
+
+    let rawData = [];
+    let filtered = [];
+    let dataTable = null;
+    let chartPrincipal = null;
+    let chartEstatus = null;
+
+    // Leer Excel usando SheetJS
+    document.getElementById('file').addEventListener('change', (e)=>{
+      const f = e.target.files[0];
+      if(!f) return;
+      const reader = new FileReader();
+      reader.onload = (evt)=>{
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data,{type:'array'});
+        const firstSheet = workbook.SheetNames[0];
+        const ws = workbook.Sheets[firstSheet];
+        const json = XLSX.utils.sheet_to_json(ws, {defval: ''});
+        rawData = json.map(r => normalizeRow(r));
+        initFilters(rawData);
+        applyAllFilters();
+      }
+      reader.readAsArrayBuffer(f);
+    })
+
+    function normalizeRow(r){
+      // Ensure all expected columns exist (if not, add empty)
+      const out = {};
+      expectedColumns.forEach(c => out[c] = r[c] !== undefined ? r[c] : '');
+      // Try to coerce numeric fields
+      out['Monto'] = asNumber(out['Monto']);
+      out['Monto Global'] = asNumber(out['Monto Global']);
+      out['Total a Recibir'] = asNumber(out['Total a Recibir']);
+      // Parse dates
+      out['Fecha Apertura_raw'] = out['Fecha Apertura'];
+      out['Fecha Apertura'] = parseDate(out['Fecha Apertura']);
+      out['Fecha Vencimiento'] = parseDate(out['Fecha Vencimiento']);
+      return out;
+    }
+    function asNumber(v){
+      if(v === '' || v === null) return 0;
+      if(typeof v === 'number') return v;
+      // remove currency and thousand separators
+      return Number(String(v).replace(/[^0-9.-]+/g,'').trim()) || 0;
+    }
+    function parseDate(v){
+      if(!v) return '';
+      // If already Date
+      if(Object.prototype.toString.call(v) === '[object Date]') return v.toISOString().slice(0,10);
+      // Excel serial? if number
+      if(typeof v === 'number'){
+        const d = XLSX.SSF.parse_date_code(v);
+        if(d) return `${d.y.toString().padStart(4,'0')}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+      }
+      // Try common formats
+      const dt = new Date(v);
+      if(!isNaN(dt)) return dt.toISOString().slice(0,10);
+      return String(v);
+    }
+
+    // Inicializar filtros dinámicamente
+    function initFilters(data){
+      populateSelect('filterSucursal', uniqueValues(data,'Sucursal'));
+      populateSelect('filterPromotor', uniqueValues(data,'Promotor'));
+      populateSelect('filterEstatus', uniqueValues(data,'Estatus'));
+      populateSelect('filterTipo', uniqueValues(data,'Tipo Aportación'));
+    }
+    function uniqueValues(data,key){
+      const s = new Set();
+      data.forEach(r => { if(r[key] !== undefined && r[key] !== '') s.add(r[key]); });
+      return Array.from(s).sort();
+    }
+    function populateSelect(id,items){
+      const sel = document.getElementById(id);
+      sel.innerHTML = '<option value="">-- Todos --</option>' + items.map(i=>`<option value="${escapeHtml(i)}">${escapeHtml(i)}</option>`).join('');
+    }
+    function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+    // Botones
+    document.getElementById('applyFilters').addEventListener('click', applyAllFilters);
+    document.getElementById('resetFilters').addEventListener('click', ()=>{
+      ['filterSucursal','filterPromotor','filterEstatus','filterTipo'].forEach(id=>document.getElementById(id).value='');
+      document.getElementById('searchClient').value='';
+      document.getElementById('dateFrom').value='';
+      document.getElementById('dateTo').value='';
+      applyAllFilters();
+    });
+
+    document.getElementById('searchClient').addEventListener('keyup', ()=>{ applyAllFilters(); });
+
+    function applyAllFilters(){
+      if(!rawData.length) return;
+      const suc = document.getElementById('filterSucursal').value;
+      const prom = document.getElementById('filterPromotor').value;
+      const est = document.getElementById('filterEstatus').value;
+      const tipo = document.getElementById('filterTipo').value;
+      const from = document.getElementById('dateFrom').value;
+      const to = document.getElementById('dateTo').value;
+      const search = document.getElementById('searchClient').value.toLowerCase();
+
+      filtered = rawData.filter(r=>{
+        if(suc && r['Sucursal'] !== suc) return false;
+        if(prom && r['Promotor'] !== prom) return false;
+        if(est && r['Estatus'] !== est) return false;
+        if(tipo && r['Tipo Aportación'] !== tipo) return false;
+        if(from){ if(!r['Fecha Apertura'] || r['Fecha Apertura'] < from) return false; }
+        if(to){ if(!r['Fecha Apertura'] || r['Fecha Apertura'] > to) return false; }
+        if(search){ const s = (r['Nombre de Cliente'] + ' ' + r['Número de Cliente']).toLowerCase(); if(!s.includes(search)) return false; }
+        return true;
+      });
+
+      refreshKpis();
+      refreshCharts();
+      refreshTable();
+    }
+
+    function refreshKpis(){
+      const total = filtered.reduce((s,r)=>s + (r['Monto']||0),0);
+      const count = filtered.length;
+      const avg = count? (total/count):0;
+      document.getElementById('kpiTotal').innerText = formatCurrency(total);
+      document.getElementById('kpiCount').innerText = count;
+      document.getElementById('kpiPromedio').innerText = formatCurrency(avg);
+    }
+    function formatCurrency(n){
+      return new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',maximumFractionDigits:2}).format(n);
+    }
+
+    // CHARTS
+    function refreshCharts(){
+      // Chart principal: Monto por Fecha Apertura (por mes)
+      const byMonth = {};
+      filtered.forEach(r=>{
+        const d = r['Fecha Apertura'] || 'Sin fecha';
+        const key = d === 'Sin fecha' ? 'Sin fecha' : d.slice(0,7); // YYYY-MM
+        byMonth[key] = (byMonth[key] || 0) + (r['Monto']||0);
+      });
+      const labels = Object.keys(byMonth).sort();
+      const values = labels.map(l=>byMonth[l]);
+
+      if(chartPrincipal) chartPrincipal.destroy();
+      const ctx = document.getElementById('chartPrincipal').getContext('2d');
+      chartPrincipal = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ label: 'Monto por mes', data: values, tension:0.3, fill:true, backgroundColor: getGradient(ctx), borderColor: 'rgba(0,188,212,0.9)', pointRadius:3 }] },
+        options: { plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}, y:{ticks:{callback: v => formatShortCurrency(v)}} }
+      });
+
+      // Pie: estatus
+      const byEstatus = {};
+      filtered.forEach(r=>{ const k = r['Estatus']||'Sin estatus'; byEstatus[k] = (byEstatus[k]||0)+1 });
+      const eLabels = Object.keys(byEstatus);
+      const eValues = eLabels.map(l=>byEstatus[l]);
+      if(chartEstatus) chartEstatus.destroy();
+      const ctx2 = document.getElementById('chartEstatus').getContext('2d');
+      chartEstatus = new Chart(ctx2, { type:'doughnut', data:{ labels:eLabels, datasets:[{ data:eValues, backgroundColor: generatePalette(eLabels.length) }] }, options:{ plugins:{legend:{position:'bottom'}} } });
+    }
+    function formatShortCurrency(v){
+      if(v >= 1e6) return (v/1e6).toFixed(1)+'M';
+      if(v >= 1e3) return (v/1e3).toFixed(1)+'k';
+      return v;
+    }
+    function getGradient(ctx){
+      const g = ctx.createLinearGradient(0,0,0,300);
+      g.addColorStop(0,'rgba(0,188,212,0.25)');
+      g.addColorStop(1,'rgba(0,188,212,0.05)');
+      return g;
+    }
+    function generatePalette(n){
+      // simple palette mixing aqua with shades
+      const base = [0,188,212];
+      const arr = [];
+      for(let i=0;i<n;i++){
+        const f = 0.6 + 0.4*(i/n);
+        const r = Math.round(base[0]*f);
+        const g = Math.round(base[1]*f);
+        const b = Math.round(base[2]*f);
+        arr.push(`rgba(${r},${g},${b},0.85)`);
+      }
+      return arr;
+    }
+
+    // Tabla
+    function refreshTable(){
+      const table = document.getElementById('dataTable');
+      // Build header from expectedColumns (you can reorder)
+      const header = table.querySelector('thead');
+      const body = table.querySelector('tbody');
+      header.innerHTML = '';
+      body.innerHTML = '';
+
+      const cols = ['Sucursal','Promotor','Número de Cliente','Nombre de Cliente','Tipo Aportación','No. Aportación','Fecha Apertura','Fecha Vencimiento','Estatus','Plazo (Días)','Monto','Total a Recibir','Institución 1','Cta. Dispersar 1','Notas'];
+
+      header.innerHTML = '<tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr>';
+      body.innerHTML = filtered.map(r=>{
+        return '<tr>' + cols.map(c=>`<td>${escapeHtml(displayCell(r,c))}</td>`).join('') + '</tr>'
+      }).join('');
+
+      // Init DataTable (destroy if exists)
+      if($.fn.DataTable.isDataTable('#dataTable')){ $('#dataTable').DataTable().destroy(); }
+      $('#dataTable').DataTable({ pageLength:10, order:[[6,'desc']], autoWidth:false });
+    }
+    function displayCell(r,c){
+      const v = r[c] === undefined ? '' : r[c];
+      if(c === 'Monto' || c === 'Total a Recibir') return formatCurrency(Number(v)||0);
+      return v;
+    }
+
+    // Export CSV
+    document.getElementById('downloadCsv').addEventListener('click', ()=>{
+      if(!filtered.length) return alert('No hay datos filtrados para exportar');
+      const cols = Object.keys(filtered[0]);
+      const rows = filtered.map(r => cols.map(c=>`"${String(r[c]).replace(/"/g,'""')}"`).join(','));
+      const csv = [cols.map(c=>`"${c}"`).join(','), ...rows].join('\n');
+      const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'aportaciones_export.csv'; document.body.appendChild(a); a.click(); a.remove();
+    })
+
+  </script>
+</body>
+</html>
